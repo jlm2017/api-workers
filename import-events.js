@@ -18,7 +18,10 @@ winston.configure({
 
 const NBAPIKey = process.env.NB_API_KEY_1;
 const NBNationSlug = process.env.NB_SLUG;
-const APIKey = process.env.API_KEY;
+const user = process.env.AUTH_USER;
+const password = process.env.AUTH_PASSWORD;
+
+const authInfo = {user, password};
 
 const importEvents = co.wrap(function *(forever = true) {
   do {
@@ -49,7 +52,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
   winston.debug('Update event:' + nbEvent.id);
 
   // Which resource are we using on api.jlm2017.fr
-  const resource = nbEvent.calendar_id === 3 ? 'all_groups' : 'all_events';
+  const resource = nbEvent.calendar_id === 3 ? 'groups' : 'events';
 
   // Construct our POST body
   const props = {
@@ -85,35 +88,36 @@ const updateEvent = co.wrap(function *(nbEvent) {
       ]
     };
     props.location = {
-      name: nbEvent.venue.name,
+      name: nbEvent.venue.name || '',
       address: nbEvent.venue.address.address1 + ', ' + nbEvent.venue.address.zip + ' ' + nbEvent.venue.address.city,
-      address1: nbEvent.venue.address.address1,
-      address2: nbEvent.venue.address.address2,
-      city: nbEvent.venue.address.city,
+      address1: nbEvent.venue.address.address1 || '',
+      address2: nbEvent.venue.address.address2 || '',
+      city: nbEvent.venue.address.city || '',
       country_code: nbEvent.venue.address.country_code,
-      zip: nbEvent.venue.address.zip,
-      state: nbEvent.venue.address.state
+      zip: nbEvent.venue.address.zip || '',
+      state: nbEvent.venue.address.state || ''
     };
   }
 
   if (nbEvent.calendar_id !== 3) {
-    props.startTime = new Date(nbEvent.start_time).toUTCString();
-    props.endTime = new Date(nbEvent.end_time).toUTCString();
+    /* Seulement pour ce qui n'est pas un group d'appui !! */
+    props.start_time = new Date(nbEvent.start_time).toISOString();
+    props.end_time = new Date(nbEvent.end_time).toISOString();
     switch (nbEvent.calendar_id) {
     case 4:
-      props.agenda = 'evenements_locaux';
+      props.calendar = 'evenements_locaux';
       break;
     case 7:
-      props.agenda = 'melenchon';
+      props.calendar = 'melenchon';
       break;
     case 15:
-      props.agenda = 'reunions_circonscription';
+      props.calendar = 'reunions_circonscription';
       break;
     case 16:
-      props.agenda = 'reunions_publiques';
+      props.calendar = 'reunions_publiques';
       break;
     case 17:
-      props.agenda = 'camion_melenchon';
+      props.calendar = 'camion_melenchon';
       break;
     case 10:
       // ==> covoiturages
@@ -132,7 +136,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
   let event = null;
   try {
     // Does the event already exist in the API ?
-    event = yield api.get_resource({resource, id: nbEvent.id, APIKey});
+    event = yield api.get_resource({resource, id: nbEvent.id, authInfo});
   } catch (err) {
     if (err.statusCode !== 404) {
       winston.error(`Failed fetching ${resource}/${nbEvent.id}`, {nbId: nbEvent.id, message: err.message});
@@ -144,7 +148,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
     // the event did not exist in the API before
     // we need to push it
     try {
-      yield api.post_resource(resource, props, {APIKey});
+      yield api.post_resource(resource, props, {authInfo});
     } catch (err) {
       if (err.statusCode == 422) {
         yield checkValidationError(resource, props, err);
@@ -157,7 +161,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
     if (utils.anyPropChanged(event, props)) {
       winston.debug(`Patching ${resource}/${event._id}`);
       try {
-        yield api.patch_resource(resource, event, props, APIKey);
+        yield api.patch_resource(resource, event, props, authInfo);
       } catch (err) {
         winston.error(`Error while patching ${resource}/${event._id}`, {
           nbId: nbEvent.id,
