@@ -1,16 +1,23 @@
 'use strict';
-
 const co = require('co');
 const winston = require('winston');
 
-const api = require('./lib/api');
 const nb = require('./lib/nation-builder');
 
 const NBAPIKey = process.env.NB_API_KEY_3;
 const NBNationSlug = process.env.NB_SLUG;
-const APIKey = process.env.API_KEY;
+const user = process.env.AUTH_USER;
+const password = process.env.AUTH_PASSWORD;
 
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+
+const api = require('@fi/api-client');
+const client = api.createClient({
+  endpoint: 'http://localhost:8000/legacy',
+  clientId: user,
+  clientSecret: password
+});
+
 
 winston.configure({
   level: LOG_LEVEL,
@@ -19,20 +26,22 @@ winston.configure({
   ]
 });
 
-const attributes_names = {
-  all_events: 'events',
-  all_groups: 'groups'
+const rsvp_type = {
+  events: 'rsvps',
+  groups: 'memberships',
 };
+
+const personTable = {};
 
 const importRSVPs = co.wrap(function*(forever = true) {
 
   do {
-    for (let resource of ['all_events', 'all_groups']) {
+    for (let resource of ['events', 'groups']) {
       winston.profile(`import_RSVPs_${resource}`);
       winston.info(`cycle starting, ${resource}`);
       try {
         // let's first fetch all events/groups
-        let items = yield fetchResource(resource);
+        let items = yield client[resource].list({max_results: 2000});
 
         // handle RSVPS using ten concurrent 'threads' of execution
         // could be handled better
@@ -40,30 +49,18 @@ const importRSVPs = co.wrap(function*(forever = true) {
           yield items.slice(i, i + 5).map(item => updateItem(resource, item));
         }
       } catch (err) {
-        winston.error(`Failed handling ${resource}`, {message: err.message});
+        //winston.error(`Failed  handling ${resource}`, {message: err.message});
+        console.log(err);
+        throw(err);
       }
       winston.profile(`import_RSVPs_${resource}`);
     }
   } while (forever);
 });
 
-const fetchResource = co.wrap(function*(resource) {
-  try {
-    winston.debug(`Fetching all ${resource}`);
-
-    let res = yield api.get_resource({resource, APIKey});
-
-    return res._items;
-  } catch (err) {
-    winston.error(`Failed fetching all ${resource}`, {message: err.message});
-    throw err;
-  }
-});
 
 const updateItem = co.wrap(function*(resource, item) {
-  winston.debug(`Updating RSVPs for ${resource}/${item}`);
-
-  let participants = 0;
+  let importRSVPs = [];
 
   let fetchRSVPs = nb.fetchAll(NBNationSlug, `sites/${NBNationSlug}/pages/events/${item.id}/rsvps`, {NBAPIKey});
   while (fetchRSVPs !== null) {
@@ -72,69 +69,45 @@ const updateItem = co.wrap(function*(resource, item) {
     if (rsvps) {
       // now update all people referred in the RSVPS
       for (let i = 0; i < rsvps.length; i++) {
-        if(!rsvps[i].canceled) {
-          // count participants only if RSVP not canceled
-          // add 1 + number of guests for this RSVP
-          participants += 1 + (rsvps[i].guests_count || 0);
+        const personId = yield getPersonURL(rsvps[i].person_id);
+
+        if (personId) {
+          importRSVPs.push({
+            person: yield getPersonURL(rsvps[i].person_id),
+            canceled: rsvps[i].canceled,
+            guests: rsvps[i].guests_count || 0
+          });
         }
-        yield updatePeople(resource, item._id, rsvps[i].person_id, rsvps[i].canceled);
       }
     }
   }
 
-  // patch the number of participants for the event/group
-  if (item.participants !== participants) {
-    try {
-      yield api.patch_resource(resource, item, {participants}, APIKey);
-    } catch (err) {
-      winston.error(`Error patching ${resource} ${item._id}`, {message: err.message});
-      // here we still try to update people
-    }
-  }
-
-});
-
-const updatePeople = co.wrap(function *(resource, eventId, personId, canceled) {
-  // Get email from te person nationbuilder id
-  let person;
   try {
-    person = yield api.get_resource({resource: 'people', id: personId, APIKey});
+    if(importRSVPs.length) {
+      console.log('Not empty: ' + item._id);
+    }
+    yield item[rsvp_type[resource]].bulk.put(importRSVPs);
   } catch (err) {
-    if (err.statusCode !== 404) {
-      winston.error(`Failed fetching person ${personId}`, {message: err.message});
-    } else {
-      winston.debug(`404 when fetching person ${personId}`);
-    }
-    return;
+    winston.error(`Error patching ${resource} ${item._id}`, {message: err.message});
+    // temp
+    throw(err);
   }
 
-  let attr = attributes_names[resource];
-
-  let body = {};
-  let changed = false;
-
-  // we either remove the eventId, or add it, depending on the cancelation status of the RSVP
-  if (canceled) {
-    // we patch person iff eventId is in the attr attribute of person
-    if(person[attr] && person[attr].indexOf(eventId) !== -1) {
-      body[attr] = person[attr].filter((id) => id !== eventId);
-      changed = true;
-    }
-  } else {
-    // we patch person iff eventId is not in the attr attribute of person
-    if(!person[attr] || (person[attr].indexOf(eventId) === -1)) {
-      body[attr] = [...(person[attr] || []), eventId];
-      changed = true;
-    }
-  }
-  if (changed) {
-    try {
-      yield api.patch_resource('people', person, body, APIKey);
-    } catch (err) {
-      winston.error(`Failed updating person ${personId} (${person._id}):`, {message: err.message});
-    }
-  }
 });
 
+const getPersonURL = co.wrap(function *(personId) {
+  if (! (personId in personTable)) {
+    try {
+      const person = yield client.people.getById(personId);
+      personTable[personId] = person.url;
+    } catch(err) {
+      if (err instanceof api.exceptions.NotFoundError) {
+        return null;
+      }
+      throw err;
+    }
+  }
+  return personTable[personId];
+});
 
 importRSVPs();
