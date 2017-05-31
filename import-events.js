@@ -3,9 +3,10 @@
 const co = require('co');
 const winston = require('winston');
 
-const api = require('./lib/api');
 const nb = require('./lib/nation-builder');
 const utils = require('./lib/utils');
+
+const api = require('@fi/api-client');
 
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
@@ -21,7 +22,12 @@ const NBNationSlug = process.env.NB_SLUG;
 const user = process.env.AUTH_USER;
 const password = process.env.AUTH_PASSWORD;
 
-const authInfo = {user, password};
+const client = api.createClient({
+  endpoint: process.env.API_ENDPOINT,
+  clientId: user,
+  clientSecret: password
+});
+
 
 const importEvents = co.wrap(function *(forever = true) {
   do {
@@ -136,9 +142,9 @@ const updateEvent = co.wrap(function *(nbEvent) {
   let event = null;
   try {
     // Does the event already exist in the API ?
-    event = yield api.get_resource({resource, id: nbEvent.id, authInfo});
+    event = yield client[resource].getById(nbEvent.id);
   } catch (err) {
-    if (err.statusCode !== 404) {
+    if (!(err instanceof api.exceptions.NotFoundError)) {
       winston.error(`Failed fetching ${resource}/${nbEvent.id}`, {nbId: nbEvent.id, message: err.message});
       return;
     }
@@ -148,9 +154,10 @@ const updateEvent = co.wrap(function *(nbEvent) {
     // the event did not exist in the API before
     // we need to push it
     try {
-      yield api.post_resource(resource, props, {authInfo});
+      event = client[resource].create(props);
+      yield event.save();
     } catch (err) {
-      if (err.statusCode == 422) {
+      if (err instanceof api.exceptions.ValidationError) {
         yield checkValidationError(resource, props, err);
       } else {
         winston.error(`Error while creating ${resource} ${nbEvent.id}:`, err.message);
@@ -161,7 +168,8 @@ const updateEvent = co.wrap(function *(nbEvent) {
     if (utils.anyPropChanged(event, props)) {
       winston.debug(`Patching ${resource}/${event._id}`);
       try {
-        yield api.patch_resource(resource, event, props, authInfo);
+        Object.assign(event, props);
+        yield event.save();
       } catch (err) {
         winston.error(`Error while patching ${resource}/${event._id}`, {
           nbId: nbEvent.id,
@@ -177,29 +185,29 @@ const updateEvent = co.wrap(function *(nbEvent) {
 
 
 const checkValidationError = co.wrap(function*(resource, duplicate, originalError) {
-  let response;
+  let duplicated;
   try {
-    response = yield api.get_resource({resource, where: `{"path":"${duplicate.path}"}`, APIKey});
+    duplicated = yield client[resource].list({path: duplicate.path});
   } catch (err) {
     winston.error(
       'import-events - unknown error while checking duplicate',
-      {resource, duplicate, originalError: api.logError(originalError), error: api.logError(err)}
+      {resource, duplicate, originalError: originalError.message, error: err.message}
     );
     return;
   }
-  if (response['_items'].length != 1) {
+  if (!duplicated.length) {
     winston.error(
       'import-events - other validation error',
-      {resource, id: duplicate.id, path: duplicate.path, error: api.logError(originalError)}
+      {resource, id: duplicate.id, path: duplicate.path, error: originalError.message}
     );
     return;
   }
 
-  let existing = response._items[0];
+  let existing = duplicated[0];
   let differences = utils.getDifferentProps(existing, duplicate);
   delete differences.id;
 
-  if (response.id === duplicate.id) {
+  if (existing.id === duplicate.id) {
     winston.warn(
       'import-events - potential corner case',
       {duplicate: duplicate, existing: existing.id, path: duplicate.path, _id: existing._id, message: originalError.message}

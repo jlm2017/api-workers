@@ -13,7 +13,7 @@ const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
 const api = require('@fi/api-client');
 const client = api.createClient({
-  endpoint: 'http://localhost:8000/legacy',
+  endpoint: process.env.API_ENDPOINT,
   clientId: user,
   clientSecret: password
 });
