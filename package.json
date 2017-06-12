@@ -9,7 +9,7 @@
   "author": "Guillaume Royer <perso@guilro.com>",
   "license": "AGPL-3.0",
   "dependencies": {
-    "@fi/api-client": "^0.1.0",
+    "@fi/api-client": "^0.1.1",
     "body-parser": "^1.17.1",
     "co": "^4.6.0",
     "deep-equal": "^1.0.1",
