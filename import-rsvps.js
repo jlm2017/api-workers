@@ -83,9 +83,6 @@ const updateItem = co.wrap(function*(resource, item) {
   }
 
   try {
-    if(importRSVPs.length) {
-      console.log('Not empty: ' + item._id);
-    }
     yield item[rsvp_type[resource]].bulk.put(importRSVPs);
   } catch (err) {
     winston.error(`Error patching ${resource} ${item._id}`, {message: err.message});
