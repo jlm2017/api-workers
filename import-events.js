@@ -106,7 +106,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
   }
 
   if (nbEvent.calendar_id !== 3) {
-    /* Seulement pour ce qui n'est pas un group d'appui !! */
+    /* Seulement pour ce qui n'est pas un groupe d'appui !! */
     props.start_time = new Date(nbEvent.start_time).toISOString();
     props.end_time = new Date(nbEvent.end_time).toISOString();
     switch (nbEvent.calendar_id) {
@@ -131,6 +131,9 @@ const updateEvent = co.wrap(function *(nbEvent) {
     case 14:
       // ==> hebergement
       return;
+    case 1018:
+      props.calendar = 'caravane';
+      break;
     default:
       // unknown calendar_id: let's log and return
       winston.info(`Event ${nbEvent.id}'s calendar_id is an unknown value (${nbEvent.calendar_id})`);
