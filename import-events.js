@@ -132,7 +132,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
       // ==> hebergement
       return;
     case 1018:
-      props.calendar = 'caravane';
+      props.calendar = 'caravanes';
       break;
     default:
       // unknown calendar_id: let's log and return
