@@ -200,7 +200,6 @@ const updateEvent = co.wrap(function *(nbEvent) {
   }
 
   var memberships = yield event.memberships.list();
-  console.log(memberships);
   var membership = memberships.find(membership => (membership.person = person.url));
 
   if (!membership) {
