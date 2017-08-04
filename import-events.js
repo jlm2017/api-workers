@@ -184,6 +184,37 @@ const updateEvent = co.wrap(function *(nbEvent) {
       winston.debug(`Nothing changed with people/${event._id}`);
     }
   }
+
+  if (resource !== 'groups') return;
+
+  let person;
+  try {
+    person = yield client.people.getById(nbEvent.author_id);
+  } catch (err) {
+    if (!(err instanceof api.exceptions.NotFoundError)) {
+      winston.error(`Failed fetching person ${nbEvent.author_id}`, {nbId: nbEvent.author_id, message: err.message});
+      return null;
+    }
+
+    return null;
+  }
+
+  var memberships = yield event.memberships.list();
+  console.log(memberships);
+  var membership = memberships.find(membership => (membership.person = person.url));
+
+  if (!membership) {
+    membership = event.memberships.create({
+      person: person.url,
+    });
+  }
+
+  membership.is_manager = true;
+  try {
+    yield membership.save();
+  } catch (err) {
+    winston.error('Error while creating/updating membership', {eventId: event.id, personId: person.id, message: err.message});
+  }
 });
 
 
