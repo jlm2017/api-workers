@@ -17,6 +17,7 @@
     "js-base64": "^2.1.9",
     "redis": "^2.6.2",
     "request-promise": "^3.0.0",
+    "throat": "^4.1.0",
     "timeout-as-promise": "^1.0.0",
     "url-escape-tag": "^1.0.0",
     "winston": "^2.3.1",

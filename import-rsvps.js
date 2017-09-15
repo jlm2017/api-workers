@@ -1,7 +1,7 @@
 'use strict';
 const co = require('co');
 const winston = require('winston');
-
+const throat = require('throat');
 const nb = require('./lib/nation-builder');
 
 const NBAPIKey = process.env.NB_API_KEY_3;
@@ -33,7 +33,7 @@ const rsvp_type = {
 
 const personTable = {};
 
-const importRSVPs = co.wrap(function*(forever = true) {
+const importRSVPs = async function(forever = true) {
 
   do {
     for (let resource of ['events', 'groups']) {
@@ -41,39 +41,34 @@ const importRSVPs = co.wrap(function*(forever = true) {
       winston.info(`cycle starting, ${resource}`);
       try {
         // let's first fetch all events/groups
-        let items = yield client[resource].list({max_results: 2000});
+        let items = await client[resource].list({max_results: 2000});
 
-        // handle RSVPS using ten concurrent 'threads' of execution
-        // could be handled better
-        for (let i = 0; i < items.length; i += 5) {
-          yield items.slice(i, i + 5).map(item => updateItem(resource, item));
-        }
+        await Promise.all(items.map(throat(10, item => updateItem(resource, item))));
       } catch (err) {
-        //winston.error(`Failed  handling ${resource}`, {message: err.message});
-        console.log(err);
+        winston.error(`Failed handling ${resource}`, {message: err.message});
         throw(err);
       }
       winston.profile(`import_RSVPs_${resource}`);
     }
   } while (forever);
-});
+};
 
 
-const updateItem = co.wrap(function*(resource, item) {
+const updateItem = async function(resource, item) {
   let importRSVPs = [];
 
   let fetchRSVPs = nb.fetchAll(NBNationSlug, `sites/${NBNationSlug}/pages/events/${item.id}/rsvps`, {NBAPIKey});
   while (fetchRSVPs !== null) {
     let rsvps;
-    [rsvps, fetchRSVPs] = yield fetchRSVPs();
+    [rsvps, fetchRSVPs] = await fetchRSVPs();
     if (rsvps) {
       // now update all people referred in the RSVPS
       for (let i = 0; i < rsvps.length; i++) {
-        const personId = yield getPersonURL(rsvps[i].person_id);
+        const personId = await getPersonURL(rsvps[i].person_id);
 
         if (personId) {
           importRSVPs.push({
-            person: yield getPersonURL(rsvps[i].person_id),
+            person: await getPersonURL(rsvps[i].person_id),
             canceled: rsvps[i].canceled,
             guests: rsvps[i].guests_count || 0
           });
@@ -83,14 +78,12 @@ const updateItem = co.wrap(function*(resource, item) {
   }
 
   try {
-    yield item[rsvp_type[resource]].bulk.put(importRSVPs);
+    await item[rsvp_type[resource]].bulk.put(importRSVPs);
   } catch (err) {
     winston.error(`Error patching ${resource} ${item._id}`, {message: err.message});
-    // temp
-    throw(err);
   }
 
-});
+};
 
 const getPersonURL = co.wrap(function *(personId) {
   if (! (personId in personTable)) {
