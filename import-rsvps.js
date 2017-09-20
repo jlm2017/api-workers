@@ -34,16 +34,16 @@ const rsvp_type = {
 const personTable = {};
 
 const importRSVPs = async function(forever = true) {
-
   do {
     for (let resource of ['events', 'groups']) {
       winston.profile(`import_RSVPs_${resource}`);
       winston.info(`cycle starting, ${resource}`);
       try {
         // let's first fetch all events/groups
-        let items = await client[resource].list({max_results: 2000});
-
-        await Promise.all(items.map(throat(10, item => updateItem(resource, item))));
+        let items = await client[resource].list({max_results: 100});
+        do {
+          await Promise.all(items.map(throat(10, item => updateItem(resource, item))));
+        } while (items.hasNext && (items = await items.getNext()));
       } catch (err) {
         winston.error(`Failed handling ${resource}`, {message: err.message});
         throw(err);
