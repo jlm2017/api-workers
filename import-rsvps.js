@@ -60,7 +60,15 @@ const updateItem = async function(resource, item) {
   let fetchRSVPs = nb.fetchAll(NBNationSlug, `sites/${NBNationSlug}/pages/events/${item.id}/rsvps`, {NBAPIKey});
   while (fetchRSVPs !== null) {
     let rsvps;
-    [rsvps, fetchRSVPs] = await fetchRSVPs();
+    try {
+      [rsvps, fetchRSVPs] = await fetchRSVPs();
+    } catch (err) {
+      if (err.statusCode == 404) {
+        item.published = false;
+        await item.save()
+        return;
+      }
+    }
     if (rsvps) {
       // now update all people referred in the RSVPS
       for (let i = 0; i < rsvps.length; i++) {
