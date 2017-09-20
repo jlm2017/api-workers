@@ -33,7 +33,7 @@ const rsvp_type = {
 
 const personTable = {};
 
-const importRSVPs = async function(forever = true) {
+const importRSVPs = async (forever = true) => {
   do {
     for (let resource of ['events', 'groups']) {
       winston.profile(`import_RSVPs_${resource}`);
@@ -65,7 +65,7 @@ const updateItem = async function(resource, item) {
     } catch (err) {
       if (err.statusCode == 404) {
         item.published = false;
-        await item.save()
+        await item.save();
         return;
       }
     }
