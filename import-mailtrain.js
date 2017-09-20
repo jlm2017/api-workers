@@ -22,6 +22,17 @@ winston.configure({
   ]
 });
 
+const tagWhiteList = [
+  'créateur groupe d\'appui',
+  'convention : cars',
+  'convention : inscrit',
+  'groupe d\'appuis certifié',
+];
+
+function shouldIncludeTag(tag) {
+  return tagWhiteList.includes(tag) || tag.startsWith('agir ');
+}
+
 async function updatePerson(person) {
   let inscriptions = [];
   if (person && person.events && person.events.length > 0) {
@@ -43,7 +54,7 @@ async function updatePerson(person) {
     await request.post({
       url: `https://newsletter.jlm2017.fr/api/${action}/SyWda9pi?access_token=${MailTrainKey}`,
       body: {
-        MERGE_TAGS: person.tags.join(','),
+        MERGE_TAGS: person.tags.filter(shouldIncludeTag).join(','),
         EMAIL: person.email,
         MERGE_ZIPCODE: person.location.zip,
         MERGE_INSCRIPTIONS: inscriptions.join(',')
