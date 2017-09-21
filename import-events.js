@@ -185,6 +185,8 @@ const updateEvent = co.wrap(function *(nbEvent) {
     }
   }
 
+  // Update referent and manager of the group from the author of the event on NB
+
   if (resource !== 'groups') return;
 
   let person;
@@ -208,6 +210,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
     });
   }
 
+  membership.is_referent = true;
   membership.is_manager = true;
   try {
     yield membership.save();
