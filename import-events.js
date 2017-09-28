@@ -187,8 +187,6 @@ const updateEvent = co.wrap(function *(nbEvent) {
 
   // Update referent and manager of the group from the author of the event on NB
 
-  if (resource !== 'groups') return;
-
   let person;
   try {
     person = yield client.people.getById(nbEvent.author_id);
@@ -199,6 +197,13 @@ const updateEvent = co.wrap(function *(nbEvent) {
     }
 
     return null;
+  }
+
+  if (resource !== 'groups') {
+    event.organizers = [];
+    event.organizers.push(person.url);
+    event.save();
+    return;
   }
 
   var memberships = yield event.memberships.list();
