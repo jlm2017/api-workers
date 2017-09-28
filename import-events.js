@@ -205,7 +205,7 @@ const updateEvent = co.wrap(function *(nbEvent) {
     try {
       event.save();
     } catch (err) {
-      winston.error('Error while updating organizers', {groupId: event.id, personId: person.id, message: err.message})
+      winston.error('Error while updating organizers', {groupId: event.id, personId: person.id, message: err.message});
     }
     return;
   }
