@@ -202,7 +202,11 @@ const updateEvent = co.wrap(function *(nbEvent) {
   if (resource !== 'groups') {
     event.organizers = [];
     event.organizers.push(person.url);
-    event.save();
+    try {
+      event.save();
+    } catch (err) {
+      winston.error('Error while updating organizers', {groupId: event.id, personId: person.id, message: err.message})
+    }
     return;
   }
 
