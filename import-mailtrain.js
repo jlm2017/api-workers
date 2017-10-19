@@ -48,22 +48,36 @@ async function updatePerson(person) {
     inscriptions.push('sans_groupe_appui');
   }
 
-  let action = person.email_opt_in === true ? 'subscribe' : 'unsubscribe';
+  let primary_email_action = person.email_opt_in === true ? 'subscribe' : 'unsubscribe';
 
-  try {
-    await request.post({
-      url: `https://newsletter.jlm2017.fr/api/${action}/SyWda9pi?access_token=${MailTrainKey}`,
-      body: {
-        MERGE_TAGS: person.tags.filter(shouldIncludeTag).join(','),
-        EMAIL: person.email,
-        MERGE_ZIPCODE: person.location.zip,
-        MERGE_INSCRIPTIONS: inscriptions.join(',')
-      },
-      json: true
-    });
-  } catch (err) {
-    winston.error(`Error updating ${person.email} on Mailtrain`, err.message);
-  }
+  await Promise.all(person.emails.map(async (email, index) => {
+    if (email.bounced) {
+      return;
+    }
+
+    try {
+      await request.post({
+        url: `https://newsletter.jlm2017.fr/api/${index ? 'unsubscribe' : primary_email_action}/SyWda9pi?access_token=${MailTrainKey}`,
+        body: {
+          MERGE_TAGS: person.tags.filter(shouldIncludeTag).join(','),
+          EMAIL: email.address,
+          FIRST_NAME: person.first_name,
+          LAST_NAME: person.last_name,
+          MERGE_ZIPCODE: person.location.zip,
+          MERGE_INSCRIPTIONS: inscriptions.join(','),
+          MERGE_API_UPDATED: new Date(),
+          FORCE_SUBSCRIBE: 'yes'
+        },
+        json: true
+      });
+    } catch (err) {
+      if (err.statusCode == 400) {
+        person.emails[index].bounced = true;
+        await person.save();
+      }
+      winston.error(`Error updating ${person.email} on Mailtrain`, err.message);
+    }
+  }));
 }
 
 async function updateMailtrain(forever = true) {
